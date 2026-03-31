@@ -36,12 +36,12 @@ description: |
 - 新稿件默认只维护 `article.md`，禁止再把 `toolkit/cli.py publish` 当作默认草稿发布入口。
 
 **文章产物约定**：
-- 新稿件默认目录：`article_dir = {baseDir}/skill2 paibanyouhua/{工作标题}/`
+- 新稿件默认目录：`article_dir = {baseDir}/output/{工作标题}/`
 - 目录统一通过 `powershell -ExecutionPolicy Bypass -File {baseDir}/scripts/new_wechat_article.ps1 -Title "{工作标题}" -Author "{style.author}"` 创建，不再手动拼旧 `output/` 路径。
 - `article.md` 是唯一正文源文件；`article-body.template.html`、`preview.html`、`generated/output.html`、`generated/draft.json` 都由模板脚本自动生成。
 - 图片统一放在 `assets/`，配图提示词统一放在 `generated/image-prompts.md`。
 - 图位文件名必须稳定；后续替换图片时，优先直接覆盖 `assets/` 里的同名文件，不要反复改 Markdown 路径。
-- `output/` 目录只视为历史兼容产物，不再作为默认新稿目录。
+- `output/` 目录是默认新稿目录。
 
 **Onboard 例外**：Onboard 是交互式的（需要问用户问题），不受"全自动"约束。Onboard 完成后回到全自动管道。
 
@@ -187,7 +187,7 @@ web_search: "{选题关键词} 数据 报告 2025 2026"
 **4c-0. 创建文章目录**：
 - 根据当前工作标题/选题确定最终工作标题
 - 运行：`powershell -ExecutionPolicy Bypass -File {baseDir}/scripts/new_wechat_article.ps1 -Title "{工作标题}" -Author "{style.author}"`
-- 后续正文统一写在 `{baseDir}/skill2 paibanyouhua/{工作标题}/article.md`；`article-body.template.html` 和 `preview.html` 交给模板脚本自动生成
+- 后续正文统一写在 `{baseDir}/output/{工作标题}/article.md`；`article-body.template.html` 和 `preview.html` 交给模板脚本自动生成
 
 **4c-1. 选择排版方向**：
 - 根据 `references/layout-playbook.md` 为本篇文章先选一个版式方向，再选一个对应的排版主题
@@ -258,9 +258,9 @@ web_search: "{选题关键词} 数据 报告 2025 2026"
 ```
 
 **6a.** 分析文章结构，生成封面 3 组创意 + 内文 3-6 张配图提示词，并保存到 `{article_dir}/generated/image-prompts.md`。
-- 为封面和每张内文图分配稳定槽位与目标文件名：封面固定为 `assets/cover.png` 和 `assets/cover-square.jpg`，内文固定为 `assets/img-01.jpg`、`assets/img-02.jpg`、`assets/img-03.jpg`……
+- 为封面和每张内文图分配稳定槽位与目标文件名：封面固定为 `assets/cover-wide.jpg` 和 `assets/cover-square.jpg`，内文固定为 `assets/img-01.jpg`、`assets/img-02.jpg`、`assets/img-03.jpg`……
 - 每篇文章必须同时产出两张封面：
-  - `assets/cover.png`：横版封面，用于公众号草稿箱默认封面
+  - `assets/cover-wide.jpg`：横版封面，用于公众号草稿箱默认封面
   - `assets/cover-square.jpg`：1:1 方形封面，用于后续分发、卡片位、转发配图或备用视觉物料
 - 两张封面必须属于同一个视觉主题和信息主题，但要分别适配比例；不能简单把横版封面粗暴裁成正方形交差。
 - `image-prompts.md` 里的每个图项必须写明：槽位编号、目标文件名、插入位置、对应段落、alt 文案、图例说明、用途、正向提示词、负向提示词、后期覆字说明。
@@ -275,10 +275,10 @@ web_search: "{选题关键词} 数据 报告 2025 2026"
 
 **6b.** 先为封面和所有内文图生成本地占位图文件，并保存回 `{article_dir}/assets/`。
 - 占位图是默认交付物的一部分，即使没有生图 API 也必须存在。
-- 使用稳定文件名创建占位图：`assets/cover.png`、`assets/cover-square.jpg`、`assets/img-01.jpg`、`assets/img-02.jpg`……
+- 使用稳定文件名创建占位图：`assets/cover-wide.jpg`、`assets/cover-square.jpg`、`assets/img-01.jpg`、`assets/img-02.jpg`……
 - 占位图要和对应提示词绑定，至少能让用户在预览里看见版面位置、顺序和图位规模，后续只需直接覆盖同名文件即可替换。
 - 可调用：`python3 {baseDir}/scripts/make_placeholder_image.py --output {article_dir}/assets/img-01.jpg --label "IMG 01" --size article`
-- 横版封面占位图：`python3 {baseDir}/scripts/make_placeholder_image.py --output {article_dir}/assets/cover.png --label "COVER" --size cover`
+- 横版封面占位图：`python3 {baseDir}/scripts/make_placeholder_image.py --output {article_dir}/assets/cover-wide.jpg --label "COVER 2.35:1" --size cover`
 - 方形封面占位图：`python3 {baseDir}/scripts/make_placeholder_image.py --output {article_dir}/assets/cover-square.jpg --label "COVER 1:1" --size square`
 
 **6c.** 只有在 `skip_image_gen = false` 时才调用 image_gen.py 生成图片，并直接覆盖同名目标文件；不要额外改 Markdown 路径。
@@ -314,7 +314,7 @@ web_search: "{选题关键词} 数据 报告 2025 2026"
 
 Converter 自动处理：CJK 加空格、加粗标点外移、列表转 section、外链转脚注、暗黑模式、容器语法。
 - 预览和发布都基于 `article.md` 中已经插入好的图位执行，因此占位图和正式图都必须使用正文中的同一路径。
-- 草稿箱发布默认使用 `draft-metadata.json` 里的 `cover_image`；未显式指定时默认取 `assets/cover.png`，配套方封面保存在 `assets/cover-square.jpg`。
+- 草稿箱发布默认使用 `draft-metadata.json` 里的 `cover_image`；未显式指定时默认取 `assets/cover-wide.jpg`，配套方封面保存在 `assets/cover-square.jpg`。
 - `scripts/render_wechat_article.ps1` 会自动补跑 `quality-gates`；`scripts/publish_wechat_article.ps1` 会以严格模式再次执行，出现 `fail` 直接中止发布。
 - 发布前再做一次排版验收：开头 4 段内是否已经亮出冲突/判断；全文是否至少有 2 种非纯正文模块；是否存在连续 3 个大段纯正文；图位和图例是否都已经补齐
 - 如果用户强调“排版别太单调”或当前成稿明显偏平，先额外生成 `{article_dir}/theme-gallery.html` 对比不同主题渲染效果，再决定最终 `--theme`

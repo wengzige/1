@@ -184,7 +184,7 @@ wewrite/
 │   ├── optimize_loop.py        # autoresearch 风格迭代优化框架
 │   └── build_openclaw.py       # SKILL.md → OpenClaw 格式转换
 │
-├── skill2 paibanyouhua/      # 模板草稿工作流（默认）
+├── skill2 paibanyouhua/      # 模板脚本与模板资源
 │   ├── templates/              # article.md / metadata / html 模板
 │   ├── scripts/                # new-article / render-article / publish-article
 │   └── <文章标题>/              # 每篇文章一个独立目录
@@ -212,7 +212,7 @@ wewrite/
 │   ├── learn-edits.md          # 学习飞轮流程
 │   └── effect-review.md        # 效果复盘流程
 │
-├── output/                   # 旧流程历史产物（兼容保留，非默认）
+├── output/                   # 默认文章工作目录
 ├── corpus/                   # 历史语料（可选）
 └── lessons/                  # 修改记录（自动生成）
 ```
@@ -271,7 +271,7 @@ powershell -ExecutionPolicy Bypass -File scripts/check_wechat_article.ps1 -Artic
 powershell -ExecutionPolicy Bypass -File scripts/publish_wechat_article.ps1 -ArticleDir "文章目录名"
 ```
 
-新稿默认写在 `skill2 paibanyouhua/<文章标题>/article.md`。`article-body.template.html`、`preview.html`、`generated/output.html`、`generated/draft.json` 都由模板脚本自动生成；图片统一放在 `assets/`，提示词统一放在 `generated/image-prompts.md`。从现在开始，`render` 和 `publish` 都会自动生成 `generated/humanness-report.json`、`generated/diagnose-report.json`、`generated/article-doctor-report.json`、`generated/seo-report.json`、`generated/quality-gates.json`，不再靠人工记得补跑。
+新稿默认写在 `output/<文章标题>/article.md`。`article-body.template.html`、`preview.html`、`generated/output.html`、`generated/draft.json` 都由模板脚本自动生成；图片统一放在 `assets/`，横版封面固定为 `assets/cover-wide.jpg`，方形封面固定为 `assets/cover-square.jpg`，提示词统一放在 `generated/image-prompts.md`。从现在开始，`render` 和 `publish` 都会自动生成 `generated/humanness-report.json`、`generated/diagnose-report.json`、`generated/article-doctor-report.json`、`generated/seo-report.json`、`generated/quality-gates.json`，不再靠人工记得补跑。
 
 ## Toolkit 独立使用
 

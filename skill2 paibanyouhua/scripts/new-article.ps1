@@ -9,7 +9,9 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
+$repoRoot = Split-Path -Parent $projectRoot
 $templateRoot = Join-Path $projectRoot 'templates'
+$articleHome = Join-Path $repoRoot 'output'
 
 function Write-Utf8NoBom {
     param(
@@ -66,12 +68,13 @@ function Render-Template {
 }
 
 $folderName = Convert-ToSafeFolderName -Value $Title
-$articleDir = Join-Path $projectRoot $folderName
+$articleDir = Join-Path $articleHome $folderName
 
 if ((Test-Path -LiteralPath $articleDir) -and -not $Force) {
     throw "Article folder already exists: $articleDir"
 }
 
+New-Item -ItemType Directory -Force -Path $articleHome | Out-Null
 New-Item -ItemType Directory -Force -Path $articleDir | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $articleDir 'assets') | Out-Null
 New-Item -ItemType Directory -Force -Path (Join-Path $articleDir 'generated') | Out-Null

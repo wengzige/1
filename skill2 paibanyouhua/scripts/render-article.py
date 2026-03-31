@@ -99,7 +99,7 @@ def main() -> int:
     digest = str(metadata.get('digest') or '').strip() or result.digest
     author = str(metadata.get('author') or '').strip() or load_style_author()
     content_source_url = str(metadata.get('content_source_url') or '')
-    cover_image = str(metadata.get('cover_image') or 'assets/cover.png')
+    cover_image = str(metadata.get('cover_image') or 'assets/cover-wide.jpg')
     need_open_comment = int(metadata.get('need_open_comment', 1))
     only_fans_can_comment = int(metadata.get('only_fans_can_comment', 0))
 

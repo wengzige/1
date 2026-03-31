@@ -1,10 +1,10 @@
 # 模板草稿链默认规则
 
-这份规则用来覆盖 WeWrite 里还没来得及完全移除的旧 `output/` 描述。只要任务是“写公众号 / 推草稿 / 微信排版 / 推送草稿箱”，一律优先执行这份规则。
+这份规则定义 WeWrite 默认的模板草稿链。只要任务是“写公众号 / 推草稿 / 微信排版 / 推送草稿箱”，一律优先执行这份规则。
 
 ## 目录与源文件
 
-- 新稿件默认工作区是 `{skill_dir}/skill2 paibanyouhua/<文章标题>/`。
+- 新稿件默认工作区是 `{skill_dir}/output/<文章标题>/`。
 - 目录统一通过 `powershell -ExecutionPolicy Bypass -File {skill_dir}/scripts/new_wechat_article.ps1 -Title "<标题>"` 创建。
 - `article.md` 是唯一正文源文件。除非用户明确要求，不要再手工维护 `article-body.template.html` 和 `preview.html`。
 - `article-body.template.html`、`preview.html`、`generated/output.html`、`generated/draft.json` 都是渲染脚本生成的交付物。
@@ -12,7 +12,7 @@
 ## 图片与提示词
 
 - 所有封面和正文配图统一放在 `assets/`。
-- 封面默认使用 `assets/cover.png`，方形封面使用 `assets/cover-square.jpg`，正文图统一使用 `assets/img-01.jpg` 这种稳定槽位名。
+- 封面默认使用 `assets/cover-wide.jpg`，方形封面使用 `assets/cover-square.jpg`，正文图统一使用 `assets/img-01.jpg` 这种稳定槽位名。
 - 正文 Markdown 里可以继续写 `![配图 1](img-01.jpg)`，渲染脚本会自动映射到 `assets/img-01.jpg` 并替换成 `{{IMAGE:assets/img-01.jpg}}`。
 - 提示词统一写到 `generated/image-prompts.md`。
 

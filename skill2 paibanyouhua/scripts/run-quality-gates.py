@@ -13,6 +13,16 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW_ROOT = Path(__file__).resolve().parents[1]
 
 
+def configure_stdio() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if callable(reconfigure):
+            try:
+                reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+
+
 def utf8_len(text: str) -> int:
     return len(text.encode("utf-8"))
 
@@ -76,6 +86,7 @@ def summarize(checks: list[dict]) -> dict:
 
 
 def main() -> int:
+    configure_stdio()
     parser = argparse.ArgumentParser(description="Run mandatory WeWrite quality gates for a template article.")
     parser.add_argument("--article-dir", required=True)
     parser.add_argument("--strict", action="store_true", help="Exit non-zero when any gate fails.")
@@ -179,7 +190,7 @@ def main() -> int:
     else:
         add_check(checks, "article_char_count", "fail", "article.md is empty or unreadable")
 
-    cover_image = str(metadata.get("cover_image") or "assets/cover.png").strip() or "assets/cover.png"
+    cover_image = str(metadata.get("cover_image") or "assets/cover-wide.jpg").strip() or "assets/cover-wide.jpg"
     cover_path = article_dir / cover_image.replace("/", "\\")
     cover_square_path = article_dir / "assets" / "cover-square.jpg"
     add_check(checks, "cover_image", "pass" if cover_path.exists() else "fail", f"cover image: {cover_path}")

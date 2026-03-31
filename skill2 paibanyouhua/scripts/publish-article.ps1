@@ -362,7 +362,7 @@ if ($metadata) {
         Add-ReportItem -Report $report -Level errors -Message 'Metadata title is empty.'
     }
     if ([string]::IsNullOrWhiteSpace([string]$metadata.cover_image)) {
-        Add-ReportItem -Report $report -Level warnings -Message 'Metadata cover_image is empty. The script will fall back to assets/cover.png if present.'
+        Add-ReportItem -Report $report -Level warnings -Message 'Metadata cover_image is empty. The script will fall back to assets/cover-wide.jpg if present.'
     }
     if (Test-SuspiciousQuestionRuns -Text ([string]$metadata.title)) {
         Add-ReportItem -Report $report -Level errors -Message 'Suspicious question-mark runs detected in metadata title. This usually means garbled text.'
@@ -462,7 +462,7 @@ if ($report.errors.Count -gt 0) {
     throw "Preflight failed:`n$message"
 }
 
-$coverPath = Resolve-ArticleFile -BaseDir $articleRoot -RelativePath $metadata.cover_image -Fallbacks @('assets/cover.png', 'cover.png')
+$coverPath = Resolve-ArticleFile -BaseDir $articleRoot -RelativePath $metadata.cover_image -Fallbacks @('assets/cover-wide.jpg', 'cover-wide.jpg')
 $coverUpload = Upload-ImageAndGetUrl -Path $coverPath
 $coverMediaId = $coverUpload.media_id
 
