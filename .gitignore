@@ -23,14 +23,14 @@ optimization-results.tsv
 # Generated output
 output/
 !output/.gitkeep
+gen_article.py
 skill2 paibanyouhua/*/
 !skill2 paibanyouhua/.agents/
 !skill2 paibanyouhua/.agents/**
 !skill2 paibanyouhua/.config/
 !skill2 paibanyouhua/.config/**
 skill2 paibanyouhua/.config/**/config.yaml
-!skill2 paibanyouhua/.local/
-!skill2 paibanyouhua/.local/**
+skill2 paibanyouhua/.local/
 !skill2 paibanyouhua/README.md
 !skill2 paibanyouhua/scripts/
 !skill2 paibanyouhua/scripts/**
@@ -44,6 +44,8 @@ clients/
 .DS_Store
 
 # Python
+.venv/
+venv/
 __pycache__/
 *.pyc
 *.pyo

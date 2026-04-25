@@ -17,6 +17,7 @@ if str(SCRIPTS_DIR) not in sys.path:
 
 from converter import WeChatConverter, preview_html  # noqa: E402
 from humanness_score import score_article  # noqa: E402
+from layout_strategy import build_layout_plan, write_layout_plan  # noqa: E402
 from theme import load_theme  # noqa: E402
 
 
@@ -89,11 +90,18 @@ def main() -> int:
 
     metadata = json.loads(meta_path.read_text(encoding='utf-8'))
     article_markdown = article_path.read_text(encoding='utf-8')
-    theme_name = args.theme.strip() or load_style_theme()
+    layout_plan = build_layout_plan(
+        article_dir=article_dir,
+        article_markdown=article_markdown,
+        explicit_theme=args.theme.strip(),
+        metadata=metadata,
+    )
+    theme_name = layout_plan['theme'] or load_style_theme()
     theme = load_theme(theme_name)
-    converter = WeChatConverter(theme=theme)
+    converter = WeChatConverter(theme=theme, layout_variant=layout_plan.get('layout_variant', 'standard'))
     result = converter.convert_file(str(article_path))
     humanness_report_path = generated_dir / 'humanness-report.json'
+    layout_plan_path = write_layout_plan(article_dir, layout_plan)
 
     title = result.title.strip() or str(metadata.get('title') or article_dir.name)
     digest = str(metadata.get('digest') or '').strip() or result.digest
@@ -118,7 +126,8 @@ def main() -> int:
         .replace('{{CONTENT}}', preview_body)
     )
 
-    updated_metadata = {
+    updated_metadata = dict(metadata)
+    updated_metadata.update({
         'title': title,
         'author': author,
         'digest': digest,
@@ -126,7 +135,13 @@ def main() -> int:
         'cover_image': cover_image,
         'need_open_comment': need_open_comment,
         'only_fans_can_comment': only_fans_can_comment,
-    }
+        'theme': theme_name,
+        'theme_mode': layout_plan.get('theme_mode', 'fixed'),
+        'layout_family': layout_plan.get('layout_family', ''),
+        'layout_variant': layout_plan.get('layout_variant', ''),
+        'module_pattern': layout_plan.get('module_pattern', ''),
+        'suggested_module_pattern': layout_plan.get('suggested_module_pattern', ''),
+    })
     humanness_report = score_article(article_markdown)
     humanness_report['article_path'] = str(article_path)
     humanness_report['report_path'] = str(humanness_report_path)
@@ -141,6 +156,9 @@ def main() -> int:
         'title': title,
         'digest': digest,
         'theme': theme_name,
+        'layout_family': layout_plan.get('layout_family', ''),
+        'module_pattern': layout_plan.get('module_pattern', ''),
+        'layout_plan': str(layout_plan_path),
         'html_template': str(html_output_path),
         'preview_html': str(preview_output_path),
         'humanness_report': str(humanness_report_path),

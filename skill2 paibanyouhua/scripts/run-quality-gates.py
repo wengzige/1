@@ -11,6 +11,11 @@ from pathlib import Path, PurePosixPath
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 WORKFLOW_ROOT = Path(__file__).resolve().parents[1]
+SCRIPTS_DIR = REPO_ROOT / "scripts"
+if str(SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_DIR))
+
+from layout_strategy import evaluate_layout_diversity  # noqa: E402
 
 
 def configure_stdio() -> None:
@@ -56,6 +61,12 @@ def run_json_command(command: list[str]) -> tuple[object | None, str | None]:
     stdout = completed.stdout.strip()
     stderr = completed.stderr.strip()
     raw = stdout or stderr
+    if stdout:
+        try:
+            return json.loads(stdout), None
+        except Exception:
+            pass
+
     if completed.returncode != 0:
         return None, raw or f"command failed: {' '.join(command)}"
 
@@ -77,19 +88,26 @@ def add_check(checks: list[dict], name: str, status: str, detail: str, *, data: 
 
 
 def summarize(checks: list[dict]) -> dict:
-    return {
+    summary = {
         "pass": sum(1 for item in checks if item["status"] == "pass"),
         "warn": sum(1 for item in checks if item["status"] == "warn"),
         "fail": sum(1 for item in checks if item["status"] == "fail"),
         "skip": sum(1 for item in checks if item["status"] == "skip"),
     }
+    summary["non_pass"] = summary["warn"] + summary["fail"] + summary["skip"]
+    summary["passed"] = summary["warn"] == 0 and summary["fail"] == 0 and summary["skip"] == 0
+    return summary
 
 
 def main() -> int:
     configure_stdio()
     parser = argparse.ArgumentParser(description="Run mandatory WeWrite quality gates for a template article.")
     parser.add_argument("--article-dir", required=True)
-    parser.add_argument("--strict", action="store_true", help="Exit non-zero when any gate fails.")
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Compatibility flag. Quality gates are always zero-warning strict.",
+    )
     args = parser.parse_args()
 
     article_dir = Path(args.article_dir).resolve()
@@ -190,6 +208,15 @@ def main() -> int:
     else:
         add_check(checks, "article_char_count", "fail", "article.md is empty or unreadable")
 
+    if article_markdown and metadata:
+        layout_result = evaluate_layout_diversity(article_dir, metadata, article_markdown)
+        layout_status = "pass" if layout_result.get("status") == "pass" else "warn"
+        warnings = layout_result.get("warnings", [])
+        detail = "layout diversity ok" if not warnings else "; ".join(str(item) for item in warnings)
+        add_check(checks, "layout_diversity", layout_status, detail, data=layout_result)
+    else:
+        add_check(checks, "layout_diversity", "fail", "missing article or metadata, cannot check layout diversity")
+
     cover_image = str(metadata.get("cover_image") or "assets/cover-wide.jpg").strip() or "assets/cover-wide.jpg"
     cover_path = article_dir / cover_image.replace("/", "\\")
     cover_square_path = article_dir / "assets" / "cover-square.jpg"
@@ -275,7 +302,9 @@ def main() -> int:
 
     report = {
         "article_dir": str(article_dir),
-        "strict": bool(args.strict),
+        "strict": True,
+        "requested_strict": bool(args.strict),
+        "quality_policy": "zero_tolerance: pass only when fail=0, warn=0, skip=0",
         "checks": checks,
         "summary": summarize(checks),
         "artifacts": artifacts,
@@ -283,7 +312,7 @@ def main() -> int:
     report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(report, ensure_ascii=False, indent=2))
 
-    if args.strict and report["summary"]["fail"] > 0:
+    if report["summary"]["non_pass"] > 0:
         return 1
     return 0
 

@@ -21,10 +21,12 @@
 - 本地渲染 / 预览统一使用 `powershell -ExecutionPolicy Bypass -File {skill_dir}/scripts/render_wechat_article.ps1 -ArticleDir "<文章目录>"`。
 - 推草稿统一使用 `powershell -ExecutionPolicy Bypass -File {skill_dir}/scripts/publish_wechat_article.ps1 -ArticleDir "<文章目录>"`。
 - `toolkit/cli.py publish` 不再作为默认草稿入口，只保留给旧流程或主题画廊辅助命令。
+- 质量门禁是零容忍模式：`generated/quality-gates.json` 里 `summary.fail`、`summary.warn`、`summary.skip` 必须全部为 0 才能继续。
+- 发布预检同样不允许 warning；任何 warning 都要先修复成 pass，不能靠“只是警告”继续推草稿。
 
 ## 强制预检
 
-发布前必须拦截以下风险：
+发布前必须拦截以下风险；命中任意一项都不允许作为 warning 放行：
 
 - HTML 注释
 - 原生 `ul / ol / li` 在关键信息区
@@ -32,5 +34,5 @@
 - replacement character `�`
 - mojibake 字节汤（如 `åäç` 这类断裂高位字节）
 
-只要命中任意一项，就直接拒绝发稿，而不是“带病发布”。
+只要命中任意一项，就直接拒绝发稿，而不是“带病发布”。本链路的通过标准是 `fail=0 / warn=0 / skip=0`。
 

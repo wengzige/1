@@ -3,8 +3,8 @@
 AI image generation module for WeWrite.
 
 Supports multiple providers via a simple abstraction:
-  - doubao-seedream (Volcengine Ark) — default, good for Chinese prompts
-  - openai (DALL-E 3) — broad availability
+  - openai (gpt-image-2 / DALL-E compatible) — recommended for image2 workflow
+  - doubao-seedream (Volcengine Ark) — good for Chinese prompts
   - Custom providers via ImageProvider base class
 
 Usage as CLI:
@@ -19,6 +19,7 @@ Usage as module:
 
 import abc
 import argparse
+import base64
 import json
 import sys
 from pathlib import Path
@@ -54,6 +55,13 @@ SIZE_PRESETS = {
     "article": {"doubao": "2560x1440", "openai": "1792x1024"},
     "vertical": {"doubao": "1088x2560", "openai": "1024x1792"},
     "square": {"doubao": "2048x2048", "openai": "1024x1024"},
+}
+
+GPT_IMAGE_SIZE_PRESETS = {
+    "cover": "2400x1024",
+    "article": "1536x864",
+    "vertical": "1024x1792",
+    "square": "1024x1024",
 }
 
 MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
@@ -137,10 +145,16 @@ class DoubaoProvider(ImageProvider):
                 "Authorization": f"Bearer {self._api_key}",
             },
             json=body,
-            timeout=120,
+            timeout=300,
         )
 
-        data = resp.json()
+        try:
+            data = resp.json()
+        except ValueError as exc:
+            snippet = resp.text[:500].replace("\n", " ")
+            raise ValueError(
+                f"OpenAI API returned non-JSON ({resp.status_code}): {snippet}"
+            ) from exc
         if resp.status_code != 200:
             error = data.get("error", {})
             msg = error.get("message", json.dumps(data, ensure_ascii=False))
@@ -160,27 +174,42 @@ class DoubaoProvider(ImageProvider):
 
 
 class OpenAIProvider(ImageProvider):
-    """OpenAI DALL-E 3 provider."""
+    """OpenAI-compatible image generation provider."""
 
     provider_key = "openai"
 
     def __init__(self, api_key: str, model: str = "dall-e-3",
-                 base_url: str = "https://api.openai.com/v1"):
+                 base_url: str = "https://api.openai.com/v1",
+                 quality: str = None, output_format: str = "jpeg",
+                 moderation: str = None):
         self._api_key = api_key
         self._model = model
         self._base_url = base_url
+        self._quality = quality
+        self._output_format = output_format
+        self._moderation = moderation
+
+    def resolve_size(self, preset: str) -> str:
+        if self._model.startswith("gpt-image") and preset in GPT_IMAGE_SIZE_PRESETS:
+            return GPT_IMAGE_SIZE_PRESETS[preset]
+        return super().resolve_size(preset)
 
     def generate(self, prompt: str, size: str) -> bytes:
-        # DALL-E 3 expects size as "WxH" format
-        dall_e_size = size.replace("x", "x")  # normalize
-
         body = {
             "model": self._model,
             "prompt": prompt,
             "n": 1,
-            "size": dall_e_size,
-            "response_format": "url",
+            "size": size,
         }
+        if self._model.startswith("gpt-image"):
+            if self._quality:
+                body["quality"] = self._quality
+            if self._output_format:
+                body["output_format"] = self._output_format
+            if self._moderation:
+                body["moderation"] = self._moderation
+        else:
+            body["response_format"] = "url"
 
         resp = requests.post(
             f"{self._base_url}/images/generations",
@@ -189,10 +218,16 @@ class OpenAIProvider(ImageProvider):
                 "Authorization": f"Bearer {self._api_key}",
             },
             json=body,
-            timeout=120,
+            timeout=300,
         )
 
-        data = resp.json()
+        try:
+            data = resp.json()
+        except ValueError as exc:
+            snippet = resp.text[:500].replace("\n", " ")
+            raise ValueError(
+                f"OpenAI API returned non-JSON ({resp.status_code}): {snippet}"
+            ) from exc
         if resp.status_code != 200:
             error = data.get("error", {})
             msg = error.get("message", json.dumps(data, ensure_ascii=False))
@@ -202,10 +237,14 @@ class OpenAIProvider(ImageProvider):
         if not image_data:
             raise ValueError(f"No image returned: {json.dumps(data, ensure_ascii=False)}")
 
-        image_url = image_data[0].get("url")
-        if not image_url:
-            raise ValueError(f"No image URL in response: {json.dumps(data, ensure_ascii=False)}")
+        first = image_data[0]
+        image_base64 = first.get("b64_json")
+        if image_base64:
+            return base64.b64decode(image_base64)
 
+        image_url = first.get("url")
+        if not image_url:
+            raise ValueError(f"No image payload in response: {json.dumps(data, ensure_ascii=False)}")
         img_resp = requests.get(image_url, timeout=60)
         img_resp.raise_for_status()
         return img_resp.content
@@ -243,6 +282,10 @@ def _build_provider(config: dict) -> ImageProvider:
         kwargs["model"] = img_cfg["model"]
     if img_cfg.get("base_url"):
         kwargs["base_url"] = img_cfg["base_url"]
+    if provider_name == "openai":
+        for optional_key in ("quality", "output_format", "moderation"):
+            if img_cfg.get(optional_key):
+                kwargs[optional_key] = img_cfg[optional_key]
 
     return provider_cls(**kwargs)
 
@@ -287,7 +330,7 @@ def generate_image(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Generate images using AI (doubao-seedream, OpenAI DALL-E, etc.)"
+        description="Generate images using AI (image2/gpt-image-2, doubao-seedream, etc.)"
     )
     parser.add_argument("--prompt", required=True, help="Image generation prompt")
     parser.add_argument("--output", required=True, help="Output file path")

@@ -30,11 +30,17 @@ class ConvertResult:
 class WeChatConverter:
     """Convert Markdown to WeChat-compatible inline-style HTML."""
 
-    def __init__(self, theme: Optional[Theme] = None, theme_name: str = "professional-clean"):
+    def __init__(
+        self,
+        theme: Optional[Theme] = None,
+        theme_name: str = "professional-clean",
+        layout_variant: str = "standard",
+    ):
         if theme is not None:
             self._theme = theme
         else:
             self._theme = load_theme(theme_name)
+        self._layout_variant = layout_variant or "standard"
         self._css_rules = get_inline_css_rules(self._theme)
 
     def convert(self, markdown_text: str) -> ConvertResult:
@@ -47,6 +53,7 @@ class WeChatConverter:
           - digest: first 120 characters of plain text
           - images: list of image src references
         """
+        markdown_text = self._strip_front_matter(markdown_text)
         title = self._extract_title(markdown_text)
         markdown_text = self._strip_h1(markdown_text)
 
@@ -109,6 +116,21 @@ class WeChatConverter:
             if stripped.startswith("# ") and not stripped.startswith("## "):
                 return stripped[2:].strip()
         return ""
+
+    def _strip_front_matter(self, text: str) -> str:
+        """Remove YAML front matter from the beginning of a Markdown file."""
+        normalized = text.replace("\r\n", "\n")
+        if not normalized.startswith("---\n"):
+            return text
+
+        end = normalized.find("\n---\n", 4)
+        if end == -1:
+            return text
+
+        stripped = normalized[end + len("\n---\n") :]
+        if text.startswith("---\r\n"):
+            return stripped.replace("\n", "\r\n")
+        return stripped
 
     def _strip_h1(self, text: str) -> str:
         """Remove H1 lines — WeChat has a separate title field."""
@@ -431,51 +453,163 @@ class WeChatConverter:
         text = self._process_quote_block(text)
         return text
 
+    def _layout_profile(self) -> dict[str, str]:
+        """Return small style switches for generated container blocks."""
+        primary = self._theme.colors.get("primary", "#2563eb")
+        text = self._theme.colors.get("text", "#333333")
+        profiles = {
+            "info-flow": {
+                "primary": primary,
+                "text": text,
+                "soft_bg": "#f8fafc",
+                "muted_bg": "#f1f5f9",
+                "shape": "10px",
+                "accent": "linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)",
+            },
+            "tech-magazine": {
+                "primary": primary,
+                "text": text,
+                "soft_bg": "#f8f5ff",
+                "muted_bg": "#f3f4f6",
+                "shape": "14px",
+                "accent": "linear-gradient(135deg, #eff6ff 0%, #f5f3ff 100%)",
+            },
+            "editorial": {
+                "primary": primary,
+                "text": text,
+                "soft_bg": "#fff7ed",
+                "muted_bg": "#f8f5f0",
+                "shape": "2px",
+                "accent": "linear-gradient(180deg, #fffaf4 0%, #ffffff 100%)",
+            },
+            "focus": {
+                "primary": primary,
+                "text": text,
+                "soft_bg": "#fff1f2",
+                "muted_bg": "#f8fafc",
+                "shape": "0",
+                "accent": "#fff7f7",
+            },
+            "minimal": {
+                "primary": primary,
+                "text": text,
+                "soft_bg": "#ffffff",
+                "muted_bg": "#fafafa",
+                "shape": "0",
+                "accent": "#ffffff",
+            },
+            "warm": {
+                "primary": primary,
+                "text": text,
+                "soft_bg": "#fff1f2",
+                "muted_bg": "#fff7ed",
+                "shape": "18px",
+                "accent": "linear-gradient(135deg, #fff1f2 0%, #fff7ed 100%)",
+            },
+        }
+        return profiles.get(
+            self._layout_variant,
+            {
+                "primary": primary,
+                "text": text,
+                "soft_bg": "#eff6ff",
+                "muted_bg": "#f3f4f6",
+                "shape": "8px",
+                "accent": "linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%)",
+            },
+        )
+
     def _process_dialogue(self, text: str) -> str:
         """Convert :::dialogue blocks to chat bubble HTML."""
-        primary = self._theme.colors.get("primary", "#2563eb")
+        profile = self._layout_profile()
+        primary = profile["primary"]
+        muted_bg = profile["muted_bg"]
+        radius = profile["shape"]
+        variant = self._layout_variant
 
         def replace_dialogue(match):
             content = match.group(1).strip()
             bubbles = []
-            for line in content.split('\n'):
+            for idx, line in enumerate(content.split('\n')):
                 line = line.strip()
                 if not line:
                     continue
                 if line.startswith('> '):
                     # Right-aligned (reply) bubble
                     msg = line[2:].strip()
-                    bubbles.append(f'<section style="display: flex; justify-content: flex-end; margin-bottom: 12px">'
-                                   f'<section style="background: {primary}; color: white; padding: 10px 14px; border-radius: 12px 12px 2px 12px; max-width: 80%; font-size: 15px; line-height: 1.6">{msg}</section></section>')
+                    if variant == "minimal":
+                        bubbles.append(
+                            f'<section style="text-align: right; margin: 14px 0; font-size: 15px; line-height: 1.8; color: {primary}; border-right: 2px solid {primary}; padding-right: 12px">{msg}</section>'
+                        )
+                    elif variant == "focus":
+                        bubbles.append(
+                            f'<section style="display: flex; justify-content: flex-end; margin-bottom: 10px">'
+                            f'<section style="background: {primary}; color: white; padding: 10px 14px; border-radius: 2px; max-width: 82%; font-size: 15px; line-height: 1.65; font-weight: 600">{msg}</section></section>'
+                        )
+                    else:
+                        bubbles.append(f'<section style="display: flex; justify-content: flex-end; margin-bottom: 12px">'
+                                       f'<section style="background: {primary}; color: white; padding: 10px 14px; border-radius: {radius} {radius} 2px {radius}; max-width: 80%; font-size: 15px; line-height: 1.6">{msg}</section></section>')
                 else:
                     # Left-aligned bubble
-                    bubbles.append(f'<section style="display: flex; justify-content: flex-start; margin-bottom: 12px">'
-                                   f'<section style="background: #f3f4f6; color: #333; padding: 10px 14px; border-radius: 12px 12px 12px 2px; max-width: 80%; font-size: 15px; line-height: 1.6">{line}</section></section>')
+                    if variant == "editorial":
+                        label = "问" if idx == 0 else "答"
+                        bubbles.append(
+                            f'<section style="margin: 12px 0; padding: 12px 14px; background: {muted_bg}; border-left: 3px solid {primary}; font-size: 15px; line-height: 1.75; color: #333"><strong>{label}：</strong>{line}</section>'
+                        )
+                    elif variant == "minimal":
+                        bubbles.append(
+                            f'<section style="margin: 14px 0; font-size: 15px; line-height: 1.8; color: #333; border-left: 2px solid #d4d4d4; padding-left: 12px">{line}</section>'
+                        )
+                    else:
+                        bubbles.append(f'<section style="display: flex; justify-content: flex-start; margin-bottom: 12px">'
+                                       f'<section style="background: {muted_bg}; color: #333; padding: 10px 14px; border-radius: {radius} {radius} {radius} 2px; max-width: 80%; font-size: 15px; line-height: 1.6">{line}</section></section>')
             return '\n'.join(bubbles)
 
         return re.sub(r':::dialogue\n(.*?)\n:::', replace_dialogue, text, flags=re.DOTALL)
 
     def _process_timeline(self, text: str) -> str:
         """Convert :::timeline blocks to vertical timeline HTML."""
-        primary = self._theme.colors.get("primary", "#2563eb")
+        profile = self._layout_profile()
+        primary = profile["primary"]
+        soft_bg = profile["soft_bg"]
+        variant = self._layout_variant
 
         def replace_timeline(match):
             content = match.group(1).strip()
             items = []
-            for line in content.split('\n'):
+            for index, line in enumerate(content.split('\n'), 1):
                 line = line.strip()
                 if not line:
                     continue
                 # Format: "**title** description" or just "description"
-                items.append(
-                    f'<section style="display: flex; margin-bottom: 16px">'
-                    f'<section style="flex-shrink: 0; width: 12px; display: flex; flex-direction: column; align-items: center">'
-                    f'<section style="width: 10px; height: 10px; border-radius: 50%; background: {primary}; margin-top: 6px"></section>'
-                    f'<section style="width: 2px; flex: 1; background: #e5e7eb; margin-top: 4px"></section>'
-                    f'</section>'
-                    f'<section style="flex: 1; padding-left: 12px; padding-bottom: 8px; font-size: 15px; line-height: 1.7">{line}</section>'
-                    f'</section>'
-                )
+                if variant == "tech-magazine":
+                    items.append(
+                        f'<section style="display: flex; margin: 12px 0; background: {soft_bg}; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px">'
+                        f'<section style="flex-shrink: 0; width: 34px; height: 34px; border-radius: 8px; background: {primary}; color: #fff; font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; margin-right: 12px">{index:02d}</section>'
+                        f'<section style="flex: 1; font-size: 15px; line-height: 1.7">{line}</section>'
+                        f'</section>'
+                    )
+                elif variant == "focus":
+                    items.append(
+                        f'<section style="display: flex; margin: 14px 0; border-bottom: 1px solid #e5e7eb; padding-bottom: 12px">'
+                        f'<section style="flex-shrink: 0; color: {primary}; font-size: 24px; font-weight: 800; line-height: 1; margin-right: 12px">{index}</section>'
+                        f'<section style="flex: 1; font-size: 15px; line-height: 1.75; font-weight: 500">{line}</section>'
+                        f'</section>'
+                    )
+                elif variant == "minimal":
+                    items.append(
+                        f'<section style="margin: 14px 0; padding-left: 16px; border-left: 1px solid #d4d4d4; font-size: 15px; line-height: 1.8">{line}</section>'
+                    )
+                else:
+                    items.append(
+                        f'<section style="display: flex; margin-bottom: 16px">'
+                        f'<section style="flex-shrink: 0; width: 12px; display: flex; flex-direction: column; align-items: center">'
+                        f'<section style="width: 10px; height: 10px; border-radius: 50%; background: {primary}; margin-top: 6px"></section>'
+                        f'<section style="width: 2px; flex: 1; background: #e5e7eb; margin-top: 4px"></section>'
+                        f'</section>'
+                        f'<section style="flex: 1; padding-left: 12px; padding-bottom: 8px; font-size: 15px; line-height: 1.7">{line}</section>'
+                        f'</section>'
+                    )
             return '\n'.join(items)
 
         return re.sub(r':::timeline\n(.*?)\n:::', replace_timeline, text, flags=re.DOTALL)
@@ -485,10 +619,13 @@ class WeChatConverter:
 
         Syntax: :::callout tip/warning/info/danger
         """
+        profile = self._layout_profile()
+        primary = profile["primary"]
+        variant = self._layout_variant
         colors_map = {
             "tip": ("#059669", "#ecfdf5", "💡"),
             "warning": ("#d97706", "#fffbeb", "⚠️"),
-            "info": ("#2563eb", "#eff6ff", "ℹ️"),
+            "info": (primary, profile["soft_bg"], "ℹ️"),
             "danger": ("#dc2626", "#fef2f2", "🚨"),
         }
 
@@ -496,6 +633,34 @@ class WeChatConverter:
             ctype = match.group(1).strip().lower()
             content = match.group(2).strip()
             color, bg, icon = colors_map.get(ctype, colors_map["info"])
+            if variant == "focus":
+                return (
+                    f'<section style="background: {bg}; border-top: 4px solid {color}; border-bottom: 1px solid {color}; '
+                    f'padding: 14px 16px; margin: 18px 0; font-size: 15px; line-height: 1.75">'
+                    f'<section style="font-weight: 800; color: {color}; margin-bottom: 6px; letter-spacing: 0.08em">{ctype.upper()}</section>'
+                    f'{content}</section>'
+                )
+            if variant == "minimal":
+                return (
+                    f'<section style="background: #ffffff; border-left: 1px solid {color}; '
+                    f'padding: 8px 0 8px 14px; margin: 20px 0; font-size: 15px; line-height: 1.85">'
+                    f'<section style="font-weight: 700; color: {color}; margin-bottom: 4px">{ctype.upper()}</section>'
+                    f'{content}</section>'
+                )
+            if variant == "tech-magazine":
+                return (
+                    f'<section style="background: {profile["accent"]}; border: 1px solid {color}; '
+                    f'padding: 16px 16px; border-radius: 14px; margin: 18px 0; font-size: 15px; line-height: 1.75; box-shadow: 0 6px 18px rgba(37, 99, 235, 0.08)">'
+                    f'<section style="font-weight: 800; color: {color}; margin-bottom: 8px">{icon} {ctype.upper()}</section>'
+                    f'{content}</section>'
+                )
+            if variant == "info-flow":
+                return (
+                    f'<section style="background: {profile["accent"]}; border: 1px solid #e5e7eb; border-left: 6px solid {color}; '
+                    f'padding: 14px 16px; border-radius: 10px; margin: 18px 0; font-size: 15px; line-height: 1.75">'
+                    f'<section style="font-weight: 800; color: {color}; margin-bottom: 6px">{ctype.upper()}</section>'
+                    f'{content}</section>'
+                )
             return (f'<section style="background: {bg}; border-left: 4px solid {color}; '
                     f'padding: 14px 16px; border-radius: 4px; margin: 16px 0; font-size: 15px; line-height: 1.7">'
                     f'<section style="font-weight: 700; color: {color}; margin-bottom: 6px">{icon} {ctype.upper()}</section>'
@@ -505,10 +670,36 @@ class WeChatConverter:
 
     def _process_quote_block(self, text: str) -> str:
         """Convert :::quote blocks to styled pull quotes."""
-        primary = self._theme.colors.get("primary", "#2563eb")
+        profile = self._layout_profile()
+        primary = profile["primary"]
+        variant = self._layout_variant
 
         def replace_quote(match):
             content = match.group(1).strip()
+            if variant == "focus":
+                return (
+                    f'<section style="margin: 26px 0; padding: 18px 0; border-top: 3px solid {primary}; border-bottom: 1px solid {primary}">'
+                    f'<section style="font-size: 20px; line-height: 1.75; color: #111; font-weight: 800">'
+                    f'{content}</section></section>'
+                )
+            if variant == "minimal":
+                return (
+                    f'<section style="margin: 28px 0; padding: 4px 0 4px 18px; border-left: 1px solid {primary}">'
+                    f'<section style="font-size: 18px; line-height: 1.9; color: #222; font-style: italic">'
+                    f'{content}</section></section>'
+                )
+            if variant == "editorial":
+                return (
+                    f'<section style="margin: 26px 0; padding: 20px 22px; background: {profile["accent"]}; border-radius: 2px">'
+                    f'<section style="font-size: 20px; line-height: 1.85; color: #2b2118; font-family: Georgia, \"Times New Roman\", \"Noto Serif CJK SC\", serif">'
+                    f'“{content}”</section></section>'
+                )
+            if variant == "tech-magazine":
+                return (
+                    f'<section style="margin: 24px 0; padding: 18px 20px; border: 1px solid {primary}; border-radius: 14px; background: {profile["accent"]}">'
+                    f'<section style="font-size: 18px; line-height: 1.8; color: #111827; font-weight: 700">'
+                    f'{content}</section></section>'
+                )
             return (f'<section style="margin: 24px 0; padding: 20px 24px; border-left: 4px solid {primary}; '
                     f'background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%); border-radius: 0 8px 8px 0">'
                     f'<section style="font-size: 18px; line-height: 1.8; color: #333; font-style: italic">'

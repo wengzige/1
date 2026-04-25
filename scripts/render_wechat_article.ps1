@@ -45,12 +45,28 @@ if (-not (Test-Path -LiteralPath $scriptPath)) {
     throw "Template render script not found: $scriptPath"
 }
 
-$args = @($scriptPath, '--article-dir', $resolvedArticleDir)
-if (-not [string]::IsNullOrWhiteSpace($Theme)) {
-    $args += @('--theme', $Theme)
-}
+$env:WEWRITE_RENDER_SCRIPT = $scriptPath
+$env:WEWRITE_RENDER_ARTICLE_DIR = $resolvedArticleDir
+$env:WEWRITE_RENDER_THEME = $Theme
+$renderRunner = @'
+import importlib.util
+import os
+import sys
 
-& python @args
+script = os.environ["WEWRITE_RENDER_SCRIPT"]
+article_dir = os.environ["WEWRITE_RENDER_ARTICLE_DIR"]
+theme = os.environ.get("WEWRITE_RENDER_THEME", "").strip()
+spec = importlib.util.spec_from_file_location("render_article", script)
+module = importlib.util.module_from_spec(spec)
+assert spec.loader is not None
+spec.loader.exec_module(module)
+sys.argv = [script, "--article-dir", article_dir]
+if theme:
+    sys.argv += ["--theme", theme]
+raise SystemExit(module.main())
+'@
+
+$renderRunner | python -
 if ($LASTEXITCODE -ne 0) {
     throw "Template render step failed for: $resolvedArticleDir"
 }
@@ -60,7 +76,24 @@ if (-not (Test-Path -LiteralPath $qualityScriptPath)) {
     throw "Quality gate script not found: $qualityScriptPath"
 }
 
-& python $qualityScriptPath --article-dir $resolvedArticleDir
+$env:WEWRITE_QUALITY_SCRIPT = $qualityScriptPath
+$env:WEWRITE_QUALITY_ARTICLE_DIR = $resolvedArticleDir
+$qualityRunner = @'
+import importlib.util
+import os
+import sys
+
+script = os.environ["WEWRITE_QUALITY_SCRIPT"]
+article_dir = os.environ["WEWRITE_QUALITY_ARTICLE_DIR"]
+spec = importlib.util.spec_from_file_location("run_quality_gates", script)
+module = importlib.util.module_from_spec(spec)
+assert spec.loader is not None
+spec.loader.exec_module(module)
+sys.argv = [script, "--article-dir", article_dir, "--strict"]
+raise SystemExit(module.main())
+'@
+
+$qualityRunner | python -
 if ($LASTEXITCODE -ne 0) {
     throw "Quality gate step failed for: $resolvedArticleDir"
 }

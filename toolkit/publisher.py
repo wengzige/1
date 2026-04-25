@@ -1,9 +1,9 @@
 import json
 import re
-
-import requests
 from dataclasses import dataclass
 from typing import Optional
+
+import requests
 
 
 @dataclass
@@ -25,6 +25,7 @@ _FORBIDDEN_SCAFFOLD_MARKERS = (
     "兼容提醒",
 )
 
+
 def _has_suspicious_mojibake(text: str) -> bool:
     consecutive = 0
     total = 0
@@ -41,17 +42,19 @@ def _has_suspicious_mojibake(text: str) -> bool:
 
 
 def _assert_clean_publish_payload(title: str, digest: str, html: str) -> None:
-    """Block obviously dirty or garbled content before creating drafts."""
+    """Block obviously dirty or garbled content before publishing."""
     joined = "\n".join(part for part in (title, digest, html) if part)
 
     if "\ufffd" in joined:
-        raise ValueError("Publish blocked: replacement character � detected in payload")
+        raise ValueError("Publish blocked: replacement character U+FFFD detected in payload")
 
     if "<!--" in html:
         raise ValueError("Publish blocked: HTML comments detected in payload")
 
     if re.search(r"\?{3,}", joined):
-        raise ValueError("Publish blocked: suspicious garbled text detected (three or more consecutive question marks)")
+        raise ValueError(
+            "Publish blocked: suspicious garbled text detected (three or more consecutive question marks)"
+        )
 
     if _has_suspicious_mojibake(joined):
         raise ValueError("Publish blocked: suspicious mojibake text detected (broken encoding pattern)")
@@ -59,6 +62,56 @@ def _assert_clean_publish_payload(title: str, digest: str, html: str) -> None:
     for marker in _FORBIDDEN_SCAFFOLD_MARKERS:
         if marker in joined:
             raise ValueError(f"Publish blocked: template scaffolding text detected: {marker}")
+
+
+def _post_json(
+    *,
+    url: str,
+    access_token: str,
+    body: dict,
+    error_prefix: str,
+) -> dict:
+    resp = requests.post(
+        url,
+        params={"access_token": access_token},
+        data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
+        headers={"Content-Type": "application/json; charset=utf-8"},
+    )
+
+    data = resp.json()
+    errcode = data.get("errcode", 0)
+    if errcode != 0:
+        errmsg = data.get("errmsg", "unknown error")
+        raise ValueError(f"WeChat {error_prefix} error: errcode={errcode}, errmsg={errmsg}")
+
+    return data
+
+
+def create_draft_from_payload(access_token: str, body: dict) -> DraftResult:
+    """
+    Create a draft in WeChat from a prebuilt /cgi-bin/draft/add payload.
+    """
+    articles = body.get("articles") or []
+    for article in articles:
+        if not isinstance(article, dict):
+            raise ValueError("WeChat create_draft error: each article payload must be an object")
+        _assert_clean_publish_payload(
+            title=str(article.get("title") or ""),
+            digest=str(article.get("digest") or ""),
+            html=str(article.get("content") or ""),
+        )
+
+    data = _post_json(
+        url="https://api.weixin.qq.com/cgi-bin/draft/add",
+        access_token=access_token,
+        body=body,
+        error_prefix="create_draft",
+    )
+
+    if "media_id" not in data:
+        raise ValueError(f"WeChat create_draft error: missing media_id in response: {data}")
+
+    return DraftResult(media_id=data["media_id"])
 
 
 def create_draft(
@@ -73,10 +126,8 @@ def create_draft(
     Create a draft in WeChat.
     API: POST https://api.weixin.qq.com/cgi-bin/draft/add
     Returns DraftResult.
-    Raise ValueError on error (errcode present and != 0).
+    Raise ValueError on error.
     """
-    _assert_clean_publish_payload(title=title, digest=digest, html=html)
-
     article = {
         "title": title,
         "author": author or "",
@@ -85,34 +136,49 @@ def create_draft(
         "show_cover_pic": 0,
     }
 
-    # thumb_media_id is required by WeChat API — if not provided,
-    # upload a default 1x1 white pixel, or skip if truly empty
     if thumb_media_id:
         article["thumb_media_id"] = thumb_media_id
 
     body = {"articles": [article]}
+    return create_draft_from_payload(access_token=access_token, body=body)
 
-    # MUST use ensure_ascii=False — otherwise Chinese becomes \uXXXX
-    # and WeChat stores the escape sequences literally, causing title
-    # length overflow and garbled content.
-    resp = requests.post(
-        "https://api.weixin.qq.com/cgi-bin/draft/add",
-        params={"access_token": access_token},
-        data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
-        headers={"Content-Type": "application/json; charset=utf-8"},
+
+def update_draft(
+    access_token: str,
+    media_id: str,
+    article: dict,
+    index: int = 0,
+) -> DraftResult:
+    """
+    Update an existing draft in WeChat.
+    API: POST https://api.weixin.qq.com/cgi-bin/draft/update
+    Returns DraftResult with the same media_id on success.
+    """
+    if not media_id:
+        raise ValueError("WeChat update_draft error: media_id is required")
+    if not isinstance(article, dict):
+        raise ValueError("WeChat update_draft error: article payload must be an object")
+
+    _assert_clean_publish_payload(
+        title=str(article.get("title") or ""),
+        digest=str(article.get("digest") or ""),
+        html=str(article.get("content") or ""),
     )
 
-    data = resp.json()
+    body = {
+        "media_id": media_id,
+        "index": index,
+        "articles": article,
+    }
 
-    errcode = data.get("errcode", 0)
-    if errcode != 0:
-        errmsg = data.get("errmsg", "unknown error")
-        raise ValueError(f"WeChat create_draft error: errcode={errcode}, errmsg={errmsg}")
+    _post_json(
+        url="https://api.weixin.qq.com/cgi-bin/draft/update",
+        access_token=access_token,
+        body=body,
+        error_prefix="update_draft",
+    )
 
-    if "media_id" not in data:
-        raise ValueError(f"WeChat create_draft error: missing media_id in response: {data}")
-
-    return DraftResult(media_id=data["media_id"])
+    return DraftResult(media_id=media_id)
 
 
 def create_image_post(
@@ -124,21 +190,7 @@ def create_image_post(
     fans_only_comment: bool = False,
 ) -> ImagePostResult:
     """
-    Create a WeChat image post (小绿书/图片帖) draft.
-
-    This uses article_type="newspic" which displays as a horizontal
-    swipe carousel (3:4 ratio), similar to Xiaohongshu.
-
-    Args:
-        access_token: WeChat access token.
-        title: Post title, max 32 characters.
-        image_media_ids: List of permanent media_ids from upload_thumb().
-                        Min 1, max 20. First image becomes the cover.
-        content: Plain text description, max ~1000 chars. No HTML.
-        open_comment: Allow comments.
-        fans_only_comment: Only followers can comment.
-
-    Returns ImagePostResult with media_id of created draft.
+    Create a WeChat image post draft using article_type="newspic".
     """
     if not image_media_ids:
         raise ValueError("At least 1 image is required for image post")
@@ -152,32 +204,22 @@ def create_image_post(
         "title": title,
         "content": content,
         "image_info": {
-            "image_list": [
-                {"image_media_id": mid} for mid in image_media_ids
-            ]
+            "image_list": [{"image_media_id": mid} for mid in image_media_ids]
         },
         "need_open_comment": 1 if open_comment else 0,
         "only_fans_can_comment": 1 if fans_only_comment else 0,
     }
 
     body = {"articles": [article]}
-
-    resp = requests.post(
-        "https://api.weixin.qq.com/cgi-bin/draft/add",
-        params={"access_token": access_token},
-        data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
-        headers={"Content-Type": "application/json; charset=utf-8"},
+    data = _post_json(
+        url="https://api.weixin.qq.com/cgi-bin/draft/add",
+        access_token=access_token,
+        body=body,
+        error_prefix="create_image_post",
     )
 
-    data = resp.json()
-
-    errcode = data.get("errcode", 0)
-    if errcode != 0:
-        errmsg = data.get("errmsg", "unknown error")
-        raise ValueError(f"WeChat create_image_post error: errcode={errcode}, errmsg={errmsg}")
-
     if "media_id" not in data:
-        raise ValueError(f"WeChat create_image_post: missing media_id in response: {data}")
+        raise ValueError(f"WeChat create_image_post error: missing media_id in response: {data}")
 
     return ImagePostResult(
         media_id=data["media_id"],

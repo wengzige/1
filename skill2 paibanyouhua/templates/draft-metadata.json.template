@@ -4,6 +4,13 @@
   "digest": "",
   "content_source_url": "__SOURCE_URL__",
   "cover_image": "assets/cover-wide.jpg",
+  "theme": "",
+  "theme_mode": "auto",
+  "layout_family": "",
+  "layout_variant": "",
+  "module_pattern": "",
+  "suggested_module_pattern": "",
+  "media_id": null,
   "need_open_comment": 1,
   "only_fans_can_comment": 0
 }

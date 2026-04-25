@@ -8,6 +8,7 @@ $ErrorActionPreference = 'Stop'
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $exe = Join-Path $projectRoot '.local\bin\md2wechat.exe'
+$draftPublishScript = Join-Path $PSScriptRoot 'upsert-wechat-draft.py'
 
 $env:HOME = $projectRoot
 $env:USERPROFILE = $projectRoot
@@ -28,13 +29,15 @@ function Write-Utf8NoBom {
 function Get-JsonOutput {
     param(
         [Parameter(Mandatory = $true)]
-        [string[]]$Args
+        [string[]]$Args,
+        [string]$CommandPath = $exe,
+        [string]$CommandLabel = 'md2wechat'
     )
 
     $previousErrorActionPreference = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
-        $output = & $exe @($Args + '--json') 2>&1
+        $output = & $CommandPath @($Args + '--json') 2>&1
         $exitCode = $LASTEXITCODE
     }
     finally {
@@ -45,7 +48,7 @@ function Get-JsonOutput {
     $successIndex = $raw.IndexOf('"success"')
 
     if ($successIndex -lt 0) {
-        throw "md2wechat did not return a success JSON object. ExitCode=$exitCode Raw output:`n$raw"
+        throw "$CommandLabel did not return a success JSON object. ExitCode=$exitCode Raw output:`n$raw"
     }
 
     $start = -1
@@ -136,6 +139,24 @@ function Get-FieldValue {
     }
 
     return $null
+}
+
+function Set-JsonProperty {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object]$Object,
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+        [Parameter(Mandatory = $true)]
+        $Value
+    )
+
+    if ($Object.PSObject.Properties.Name -contains $Name) {
+        $Object.$Name = $Value
+    }
+    else {
+        $Object | Add-Member -NotePropertyName $Name -NotePropertyValue $Value
+    }
 }
 
 function Resolve-ArticleFile {
@@ -264,8 +285,27 @@ $renderScriptPath = Join-Path $PSScriptRoot 'render-article.py'
 if (-not (Test-Path -LiteralPath $renderScriptPath)) {
     throw "Template render script not found: $renderScriptPath"
 }
+if (-not (Test-Path -LiteralPath $draftPublishScript)) {
+    throw "Draft publish helper not found: $draftPublishScript"
+}
 
-$renderOutput = & python $renderScriptPath --article-dir $articleRoot 2>&1
+$env:WEWRITE_RENDER_SCRIPT = $renderScriptPath
+$env:WEWRITE_RENDER_ARTICLE_DIR = $articleRoot
+$renderRunner = @'
+import importlib.util
+import os
+import sys
+
+script = os.environ["WEWRITE_RENDER_SCRIPT"]
+article_dir = os.environ["WEWRITE_RENDER_ARTICLE_DIR"]
+spec = importlib.util.spec_from_file_location("render_article", script)
+module = importlib.util.module_from_spec(spec)
+assert spec.loader is not None
+spec.loader.exec_module(module)
+sys.argv = [script, "--article-dir", article_dir]
+raise SystemExit(module.main())
+'@
+$renderOutput = $renderRunner | python - 2>&1
 if ($LASTEXITCODE -ne 0) {
     $rawRender = (($renderOutput | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine).Trim()
     throw "Template render step failed:`n$rawRender"
@@ -276,7 +316,23 @@ if (-not (Test-Path -LiteralPath $qualityScriptPath)) {
     throw "Quality gate script not found: $qualityScriptPath"
 }
 
-$qualityOutput = & python $qualityScriptPath --article-dir $articleRoot --strict 2>&1
+$env:WEWRITE_QUALITY_SCRIPT = $qualityScriptPath
+$env:WEWRITE_QUALITY_ARTICLE_DIR = $articleRoot
+$qualityRunner = @'
+import importlib.util
+import os
+import sys
+
+script = os.environ["WEWRITE_QUALITY_SCRIPT"]
+article_dir = os.environ["WEWRITE_QUALITY_ARTICLE_DIR"]
+spec = importlib.util.spec_from_file_location("run_quality_gates", script)
+module = importlib.util.module_from_spec(spec)
+assert spec.loader is not None
+spec.loader.exec_module(module)
+sys.argv = [script, "--article-dir", article_dir, "--strict"]
+raise SystemExit(module.main())
+'@
+$qualityOutput = $qualityRunner | python - 2>&1
 if ($LASTEXITCODE -ne 0) {
     $rawQuality = (($qualityOutput | ForEach-Object { $_.ToString() }) -join [Environment]::NewLine).Trim()
     throw "Quality gate step failed:`n$rawQuality"
@@ -462,6 +518,11 @@ if ($report.errors.Count -gt 0) {
     throw "Preflight failed:`n$message"
 }
 
+if ($report.warnings.Count -gt 0) {
+    $message = @($report.warnings | ForEach-Object { "- $_" }) -join [Environment]::NewLine
+    throw "Preflight warnings are not allowed in zero-tolerance mode:`n$message"
+}
+
 $coverPath = Resolve-ArticleFile -BaseDir $articleRoot -RelativePath $metadata.cover_image -Fallbacks @('assets/cover-wide.jpg', 'cover-wide.jpg')
 $coverUpload = Upload-ImageAndGetUrl -Path $coverPath
 $coverMediaId = $coverUpload.media_id
@@ -544,7 +605,33 @@ $draft = @{
 
 $draftJson = $draft | ConvertTo-Json -Depth 20
 Write-Utf8NoBom -Path $draftJsonPath -Content $draftJson
-$publishResult = Get-JsonOutput -Args @('create_draft', $draftJsonPath)
+
+$existingMediaId = ''
+if ($metadata.PSObject.Properties.Name -contains 'media_id' -and $null -ne $metadata.media_id) {
+    $existingMediaId = ([string]$metadata.media_id).Trim()
+}
+
+$publishArgs = @(
+    $draftPublishScript,
+    '--draft-json',
+    $draftJsonPath
+)
+
+if (-not [string]::IsNullOrWhiteSpace($existingMediaId)) {
+    $publishArgs += @('--media-id', $existingMediaId)
+}
+
+$publishResult = Get-JsonOutput -Args $publishArgs -CommandPath 'python' -CommandLabel 'upsert-wechat-draft'
+
+$publishedMediaId = [string](Get-FieldValue -Object $publishResult -Primary 'media_id')
+if ([string]::IsNullOrWhiteSpace($publishedMediaId)) {
+    throw 'Draft publish helper succeeded but media_id was not found in the JSON response.'
+}
+
+Set-JsonProperty -Object $metadata -Name 'media_id' -Value $publishedMediaId
+$metadataJson = $metadata | ConvertTo-Json -Depth 20
+Write-Utf8NoBom -Path $metaPath -Content $metadataJson
+
 $resultJson = $publishResult | ConvertTo-Json -Depth 20
 Write-Utf8NoBom -Path $resultPath -Content $resultJson
 $publishResult | ConvertTo-Json -Depth 20

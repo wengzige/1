@@ -9,20 +9,22 @@ wechat:
 
 # AI 图片生成
 image:
-  # 可选 provider: doubao | openai
-  provider: "doubao"
+  # 推荐：OpenAI-compatible image2 / gpt-image-2
+  # 可选 provider: openai | doubao
+  provider: "openai"
   api_key: "your_api_key"
 
-  # doubao-seedream（默认）
-  # 获取 API key: https://console.volcengine.com/ark
+  # image2 / gpt-image-2（默认推荐）
+  model: "gpt-image-2"
+  base_url: "https://api.openai.com/v1"
+  quality: "medium"       # low | medium | high
+  output_format: "jpeg"   # jpeg 更适合微信公众号上传体积限制
+
+  # doubao-seedream 备选
+  # provider: "doubao"
+  # api_key: "your_doubao_key"
   # model: "doubao-seedream-5-0-260128"
   # base_url: "https://ark.cn-beijing.volces.com/api/v3"
-
-  # OpenAI DALL-E 3
-  # provider: "openai"
-  # api_key: "sk-..."
-  # model: "dall-e-3"
-  # base_url: "https://api.openai.com/v1"
 
 # 默认排版主题
 theme: "professional-clean"

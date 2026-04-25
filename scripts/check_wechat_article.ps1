@@ -45,10 +45,7 @@ if (-not (Test-Path -LiteralPath $scriptPath)) {
     throw "Quality gate script not found: $scriptPath"
 }
 
-$args = @($scriptPath, '--article-dir', $resolvedArticleDir)
-if ($Strict) {
-    $args += '--strict'
-}
+$args = @($scriptPath, '--article-dir', $resolvedArticleDir, '--strict')
 
 & python @args
 if ($LASTEXITCODE -ne 0) {

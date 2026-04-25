@@ -39,6 +39,8 @@ reference_accounts:
   - "少数派"
 
 # 排版
+# auto = 根据文章内容和最近历史自动轮换；fixed = 固定使用 theme
+theme_mode: "auto"
 theme: "professional-clean"
 
 # 封面

@@ -356,8 +356,9 @@ def main():
     else:
         print(format_text(checks, summary, recs))
 
-    # Exit code: 1 if any failures, 0 otherwise
-    sys.exit(1 if summary["failures"] > 0 else 0)
+    # Zero-tolerance mode: warnings are non-pass because they create hidden
+    # downgrades in the publishing pipeline.
+    sys.exit(1 if summary["failures"] > 0 or summary["warnings"] > 0 else 0)
 
 
 if __name__ == "__main__":

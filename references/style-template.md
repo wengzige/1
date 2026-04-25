@@ -17,7 +17,8 @@ topics:                    # 内容方向（列表）
   - "方向1"
   - "方向2"
 tone: "写作风格描述"
-theme: "professional-clean" # 排版主题
+theme_mode: "auto"          # auto 自动轮换；fixed 固定使用 theme
+theme: "professional-clean" # auto 模式下作为兜底主题
 ```
 
 ## 可选字段
@@ -34,6 +35,22 @@ reference_accounts: ["参考账号1", "参考账号2"]
 cover_style: "封面风格描述"
 cover_template: "/path/to/cover.png"  # 设置后跳过 AI 生成封面
 author: "署名"
+```
+
+### 排版轮换
+
+如果你觉得每篇文章版式太像，保持：
+
+```yaml
+theme_mode: "auto"
+theme: "professional-clean"
+```
+
+渲染时会根据文章内容、最近文章的主题/版式记录自动选择新的 `theme`、`layout_family` 和容器样式。只有明确想固定一种视觉时，才改成：
+
+```yaml
+theme_mode: "fixed"
+theme: "sspai"
 ```
 
 ## 可用排版主题

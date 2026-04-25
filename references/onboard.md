@@ -26,6 +26,10 @@
 | 有没有想参考的公众号？ | `reference_accounts` | 空 |
 | 署名写什么？ | `author` | name 字段值 |
 | 偏好哪种写作人格？ | `writing_persona` | 从 tone 推断（见映射） |
+| 排版是否自动轮换？ | `theme_mode` | "auto" |
+| 固定/兜底排版主题？（可运行 `gallery` 命令预览全部 16 个主题） | `theme` | "professional-clean" |
+| 封面风格偏好？ | `cover_style` | 从 industry 推断 |
+| 有没有固定封面模板？ | `cover_template` | 不设置 |
 
 **tone → persona 自动映射**（用户不选时的默认推断）：
 - 轻松/有趣/朋友/聊天 → `midnight-friend`
@@ -33,9 +37,6 @@
 - 专业/分析/深度/行业 → `industry-observer`
 - 犀利/锐评/观点/新闻 → `sharp-journalist`
 - 严谨/数据/研究/财经 → `cold-analyst`
-| 偏好哪种排版风格？（可运行 `gallery` 命令预览全部 16 个主题） | `theme` | "professional-clean" |
-| 封面风格偏好？ | `cover_style` | 从 industry 推断 |
-| 有没有固定封面模板？ | `cover_template` | 不设置 |
 
 **写作人格说明**（`personas/` 目录下有详细定义）：
 
