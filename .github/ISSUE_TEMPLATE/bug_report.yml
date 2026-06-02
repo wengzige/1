@@ -1,0 +1,70 @@
+name: Bug report
+description: Report a CCSwitch ImageGen Fallback problem.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please remove API keys, tokens, account IDs, and relay secrets before posting logs.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What did you expect, and what happened instead?
+      placeholder: Codex relay image generation failed with ...
+    validations:
+      required: true
+  - type: textarea
+    id: command
+    attributes:
+      label: Command
+      description: Paste the command you ran. Remove secrets.
+      render: bash
+    validations:
+      required: true
+  - type: textarea
+    id: error
+    attributes:
+      label: Error output
+      description: Paste the HTTP status, response body, or terminal error. Remove secrets.
+      render: text
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Request mode
+      options:
+        - text to image
+        - image edit
+        - image edit with mask
+        - multiple reference images
+        - Codex App auto routing
+    validations:
+      required: true
+  - type: dropdown
+    id: config
+    attributes:
+      label: Provider configuration source
+      options:
+        - CCSwitch database
+        - OPENAI_API_KEY / OPENAI_BASE_URL environment variables
+        - launchctl environment variables
+        - ~/.codex/config.toml
+        - unsure
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Model
+      placeholder: gpt-image-2
+    validations:
+      required: true
+  - type: input
+    id: relay
+    attributes:
+      label: Relay/provider name
+      description: Optional. Do not include API keys or account secrets.

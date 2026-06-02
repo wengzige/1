@@ -1,6 +1,16 @@
 # CCSwitch ImageGen Fallback
 
-用于在 Codex App 使用第三方中转 API 时，通过 `gpt-image-2` 生成图片。
+Codex App 使用 CCSwitch 或第三方中转 provider 时的图片生成 fallback。它绕过部分中转站对 OpenAI SDK 图片接口的拦截，直接用 raw HTTP 调用 `gpt-image-2`、`/images/generations` 和 `/images/edits`。
+
+English keywords: Codex image generation relay fallback, CCSwitch imagegen, OpenAI compatible relay image API, `gpt-image-2`, `Your request was blocked`, `OPENAI_BASE_URL`.
+
+## 你可能是因为这些问题找到这里
+
+- Codex App 聊天已经切到第三方中转，但生图还是失败。
+- 直接调用 Codex 内置 `image_gen` 时遇到 `Your request was blocked`。
+- 中转站文字模型可用，但图片生成、图生图或 mask 编辑不稳定。
+- `OPENAI_BASE_URL`、`OPENAI_API_KEY`、`gpt-image-2` 配好后，OpenAI SDK 仍然不能正常生图。
+- 想让 Codex 自动判断官方 provider / 第三方中转 provider，不想每次手动说明“走中转”。
 
 配置完成后，你在 Codex App 里可以像平常一样直接说：
 
@@ -18,6 +28,29 @@ Codex 会自己判断当前用的是官方还是中转：
 
 - 官方 provider：使用 Codex 内置 `image_gen`
 - 第三方中转 provider：使用本工具的 raw HTTP fallback
+
+## 快速开始
+
+```bash
+mkdir -p ~/.codex/bin
+cp ccswitch-imagegen ~/.codex/bin/ccswitch-imagegen
+cp ccswitch-image-gen.py ~/.codex/bin/ccswitch-image-gen.py
+chmod +x ~/.codex/bin/ccswitch-imagegen ~/.codex/bin/ccswitch-image-gen.py
+```
+
+然后把 `AGENTS.snippet.md` 里的内容复制追加到：
+
+```text
+~/.codex/AGENTS.md
+```
+
+如果你使用 CCSwitch App 管理 Codex provider，切到非官方 Codex provider 后，本工具会优先从 `~/.cc-switch/cc-switch.db` 读取当前 provider 的 API key 和 `base_url`。如果不用 CCSwitch，也可以手动设置 `OPENAI_API_KEY` 和 `OPENAI_BASE_URL`。
+
+验证安装：
+
+```bash
+~/.codex/bin/ccswitch-imagegen --help
+```
 
 ## 原理
 
