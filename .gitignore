@@ -1,0 +1,24 @@
+.DS_Store
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.python-version
+.venv/
+venv/
+env/
+
+# Logs and local output
+*.log
+outputs/
+tmp/
+
+# Editor and cache files
+.idea/
+.vscode/
+.cache/

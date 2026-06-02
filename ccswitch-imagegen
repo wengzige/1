@@ -1,0 +1,127 @@
+#!/usr/bin/env zsh
+set -euo pipefail
+CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
+CONFIG="$CODEX_HOME/config.toml"
+CCSWITCH_DB="$HOME/.cc-switch/cc-switch.db"
+IMAGE_GEN="$CODEX_HOME/bin/ccswitch-image-gen.py"
+
+if [[ ! -x "$IMAGE_GEN" ]]; then
+  echo "Missing image fallback: $IMAGE_GEN" >&2
+  exit 1
+fi
+
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" || "${1:-}" == "help" ]]; then
+  python3 "$IMAGE_GEN" --help
+  exit 0
+fi
+
+load_ccswitch_current_provider_env() {
+  [[ -f "$CCSWITCH_DB" ]] || return 1
+  python3 - "$CCSWITCH_DB" <<'PYCCSWITCH'
+import json, shlex, sqlite3, sys
+from urllib.parse import urlparse
+
+db = sys.argv[1]
+con = sqlite3.connect(db)
+con.row_factory = sqlite3.Row
+row = con.execute(
+    "SELECT id, name, settings_config FROM providers WHERE app_type='codex' AND is_current=1 LIMIT 1"
+).fetchone()
+if not row:
+    raise SystemExit(1)
+provider_id = row["id"]
+if provider_id in {"codex-official", "default", "openai"}:
+    raise SystemExit(2)
+try:
+    cfg = json.loads(row["settings_config"] or "{}")
+except Exception:
+    cfg = {}
+key = (((cfg.get("auth") or {}).get("OPENAI_API_KEY")) or cfg.get("OPENAI_API_KEY") or "")
+if not isinstance(key, str) or not key:
+    raise SystemExit(3)
+endpoint = con.execute(
+    "SELECT url FROM provider_endpoints WHERE app_type='codex' AND provider_id=? ORDER BY id LIMIT 1",
+    (provider_id,),
+).fetchone()
+base_url = endpoint["url"] if endpoint else ""
+if not base_url:
+    base_url = cfg.get("base_url") or cfg.get("baseUrl") or cfg.get("url") or ""
+if not isinstance(base_url, str) or not base_url:
+    raise SystemExit(4)
+base_url = base_url.rstrip("/")
+if not base_url.endswith("/v1"):
+    base_url += "/v1"
+print("export OPENAI_API_KEY=" + shlex.quote(key))
+print("export OPENAI_BASE_URL=" + shlex.quote(base_url))
+PYCCSWITCH
+}
+
+resolve_base_url_from_config() {
+  [[ -f "$CONFIG" ]] || return 1
+  python3 - "$CONFIG" <<'PYBASE'
+from pathlib import Path
+import re, sys
+text = Path(sys.argv[1]).read_text(errors="replace")
+provider = None
+for line in text.splitlines():
+    m = re.match(r'\s*model_provider\s*=\s*"([^"]+)"', line)
+    if m:
+        provider = m.group(1)
+        break
+if not provider:
+    raise SystemExit(1)
+section = f"[model_providers.{provider}]"
+in_section = False
+for line in text.splitlines():
+    stripped = line.strip()
+    if stripped.startswith("["):
+        in_section = stripped == section
+        continue
+    if in_section:
+        m = re.match(r'\s*base_url\s*=\s*"([^"]+)"', line)
+        if m:
+            print(m.group(1))
+            raise SystemExit(0)
+raise SystemExit(1)
+PYBASE
+}
+
+# Prefer explicit env. If missing, import the active non-official Codex provider from CCSwitch DB.
+if [[ -z "${OPENAI_API_KEY:-}" || -z "${OPENAI_BASE_URL:-}" ]]; then
+  cc_env=$(load_ccswitch_current_provider_env 2>/dev/null || true)
+  if [[ -n "$cc_env" ]]; then
+    eval "$cc_env"
+  fi
+fi
+
+if [[ -z "${OPENAI_API_KEY:-}" ]]; then
+  gui_key=$(launchctl getenv OPENAI_API_KEY 2>/dev/null || true)
+  if [[ -n "$gui_key" ]]; then
+    export OPENAI_API_KEY="$gui_key"
+  fi
+fi
+
+if [[ -z "${OPENAI_BASE_URL:-}" ]]; then
+  gui_base=$(launchctl getenv OPENAI_BASE_URL 2>/dev/null || true)
+  if [[ -n "$gui_base" ]]; then
+    export OPENAI_BASE_URL="$gui_base"
+  fi
+fi
+
+if [[ -z "${OPENAI_BASE_URL:-}" ]]; then
+  config_base=$(resolve_base_url_from_config 2>/dev/null || true)
+  if [[ -n "$config_base" ]]; then
+    export OPENAI_BASE_URL="$config_base"
+  fi
+fi
+
+if [[ -z "${OPENAI_API_KEY:-}" ]]; then
+  echo "OPENAI_API_KEY is missing. Set it in the environment or select a non-official Codex provider in CCSwitch." >&2
+  exit 1
+fi
+if [[ -z "${OPENAI_BASE_URL:-}" ]]; then
+  echo "OPENAI_BASE_URL is missing and no active provider base_url was found." >&2
+  exit 1
+fi
+
+python3 "$IMAGE_GEN" "$@"
