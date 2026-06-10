@@ -28,7 +28,10 @@ def _require_env() -> tuple[str, str]:
 
 
 def _decode_first_image(result: dict, output: str) -> None:
-    image_b64 = result["data"][0]["b64_json"]
+    try:
+        image_b64 = result["data"][0]["b64_json"]
+    except (KeyError, IndexError, TypeError) as error:
+        raise SystemExit("Unexpected response body: " + _format_json(result)) from error
     output_path = Path(output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_bytes(base64.b64decode(image_b64))
@@ -96,10 +99,17 @@ def _request_multipart(url: str, api_key: str, fields: list[tuple[str, str]], fi
     return _open_json(request)
 
 
+def _format_json(value: object) -> str:
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
 def _open_json(request: urllib.request.Request) -> dict:
     try:
         with urllib.request.urlopen(request, timeout=180) as response:
-            return json.loads(response.read().decode("utf-8"))
+            result = json.loads(response.read().decode("utf-8"))
+            if isinstance(result, dict) and "error" in result:
+                raise SystemExit(f"HTTP {response.status}: " + _format_json(result))
+            return result
     except urllib.error.HTTPError as error:
         body = error.read().decode("utf-8", "replace")
         raise SystemExit(f"HTTP {error.code}: {body}") from error
